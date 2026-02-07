@@ -205,11 +205,14 @@ class KeylyticsApp {
     }
 
     restart() {
-        this.reset();
-        this.renderText();
+        // Show mode options again
+        document.querySelector('.header-right').classList.remove('hidden');
+
         this.typingArea.classList.remove('hidden');
         this.resultsPanel.classList.add('hidden');
-        this.typingInput.focus();
+
+        // Auto-shuffle: load new text
+        this.loadNewText();
     }
 
     renderText() {
@@ -402,6 +405,9 @@ class KeylyticsApp {
         // Hide typing, show results
         this.typingArea.classList.add('hidden');
         this.resultsPanel.classList.remove('hidden');
+
+        // Hide mode options on results page
+        document.querySelector('.header-right').classList.add('hidden');
 
         // Main metrics - show both Net WPM and Raw WPM
         document.getElementById('result-wpm').textContent = Math.round(report.basic.wpm);

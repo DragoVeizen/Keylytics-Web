@@ -297,7 +297,12 @@ main {
     font-size: 1.4rem;
     line-height: 2;
     min-height: 120px;
+    max-height: 180px;
     user-select: none;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    overflow: hidden;
 }
 
 .text-display .char {
@@ -532,26 +537,22 @@ main {
 }
 
 .key {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 6px;
-    font-size: 0.75rem;
+    border-radius: 5px;
+    font-size: 0.7rem;
     font-weight: 500;
     font-family: 'JetBrains Mono', monospace;
     color: var(--bg-primary);
-    transition: transform 0.1s ease;
     cursor: default;
-}
-
-.key:hover {
-    transform: scale(1.1);
+    flex-shrink: 0;
 }
 
 .key.space {
-    width: 180px;
+    width: 160px;
 }
 
 .key.unused {

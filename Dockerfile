@@ -9,6 +9,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY . .
 
+# Set default engine URL (can be overridden by env var)
+ENV ENGINE_API_URL=https://keylytics-engine.onrender.com
+
 # Expose port
 EXPOSE 8000
 

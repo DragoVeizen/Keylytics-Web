@@ -7,3 +7,5 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: ENGINE_API_URL
+        value: https://keylytics-engine.onrender.com

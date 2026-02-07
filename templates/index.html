@@ -36,8 +36,23 @@
                     </button>
                 </div>
                 <div class="mode-selector">
-                    <button class="mode-btn active" data-mode="random">Words</button>
-                    <button class="mode-btn" data-mode="quote">Quotes</button>
+                    <button class="mode-btn active" data-mode="words">words</button>
+                    <button class="mode-btn" data-mode="time">time</button>
+                    <button class="mode-btn" data-mode="quote">quote</button>
+                </div>
+
+                <div id="word-options" class="option-group">
+                    <button class="word-count-btn" data-words="15">15</button>
+                    <button class="word-count-btn active" data-words="30">30</button>
+                    <button class="word-count-btn" data-words="45">45</button>
+                    <button class="word-count-btn" data-words="60">60</button>
+                </div>
+
+                <div id="time-options" class="option-group hidden">
+                    <button class="time-btn" data-time="15">15s</button>
+                    <button class="time-btn active" data-time="30">30s</button>
+                    <button class="time-btn" data-time="45">45s</button>
+                    <button class="time-btn" data-time="60">60s</button>
                 </div>
             </div>
         </header>
@@ -67,9 +82,13 @@
                         <span class="stat-value" id="live-accuracy">100</span>
                         <span class="stat-label">acc%</span>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-value" id="live-time">0</span>
+                    <div class="stat-item" id="timer-container">
+                        <span class="stat-value" id="timer-display">30</span>
                         <span class="stat-label">sec</span>
+                    </div>
+                    <div class="stat-item" id="progress-container">
+                        <span class="stat-value" id="live-progress">0/0</span>
+                        <span class="stat-label">chars</span>
                     </div>
                 </div>
 
@@ -95,7 +114,11 @@
                     <!-- Main Stats -->
                     <div class="result-card large">
                         <div class="result-value" id="result-wpm">0</div>
-                        <div class="result-label">WPM</div>
+                        <div class="result-label">Net WPM</div>
+                    </div>
+                    <div class="result-card">
+                        <div class="result-value" id="result-raw-wpm">0</div>
+                        <div class="result-label">Raw WPM</div>
                     </div>
                     <div class="result-card large">
                         <div class="result-value" id="result-accuracy">0%</div>
@@ -106,10 +129,6 @@
                     <div class="result-card">
                         <div class="result-value" id="result-duration">0s</div>
                         <div class="result-label">Time</div>
-                    </div>
-                    <div class="result-card">
-                        <div class="result-value" id="result-chars">0</div>
-                        <div class="result-label">Characters</div>
                     </div>
                     <div class="result-card">
                         <div class="result-value" id="result-corrections">0</div>
@@ -127,9 +146,14 @@
                         <h3>WPM Over Time</h3>
                         <canvas id="wpm-chart"></canvas>
                     </div>
-                    <div class="chart-container">
-                        <h3>Key Latency</h3>
-                        <canvas id="latency-chart"></canvas>
+                    <div class="chart-container heatmap-container">
+                        <h3>Key Latency Heatmap</h3>
+                        <div id="keyboard-heatmap" class="keyboard-heatmap"></div>
+                        <div class="heatmap-legend">
+                            <span class="legend-label">Fast</span>
+                            <div class="legend-gradient"></div>
+                            <span class="legend-label">Slow</span>
+                        </div>
                     </div>
                 </div>
 

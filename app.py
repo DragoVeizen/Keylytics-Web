@@ -5,7 +5,7 @@ from pathlib import Path
 from statistics import median
 from typing import Dict, List, Literal, Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -36,7 +36,8 @@ class HesitationSpike(BaseModel):
 
 class BasicMetrics(BaseModel):
     duration_ms: float
-    wpm: float
+    wpm: float  # Net WPM (only correct characters count)
+    raw_wpm: float  # Raw WPM (all typed characters)
     accuracy: float
     avg_interkey_latency_ms: Optional[float]
 
@@ -139,10 +140,17 @@ def analyze(session: SessionLog) -> AnalyticsReport:
     latencies = compute_interkey_latencies(keydowns)
     avg_latency = sum(latencies) / len(latencies) if latencies else None
 
-    chars = len(session.final_text)
-    words = chars / 5.0
+    # Calculate Raw WPM (all typed characters)
+    total_chars = len(session.final_text)
     minutes = duration_ms / 60000.0
-    wpm = words / minutes if minutes > 0 else 0.0
+    raw_wpm = (total_chars / 5.0) / minutes if minutes > 0 else 0.0
+
+    # Calculate Net WPM (only correct characters)
+    correct_chars = 0
+    for i, char in enumerate(session.final_text):
+        if i < len(session.target_text) and char == session.target_text[i]:
+            correct_chars += 1
+    net_wpm = (correct_chars / 5.0) / minutes if minutes > 0 else 0.0
 
     max_len = max(len(session.target_text), len(session.final_text), 1)
     edit_dist = levenshtein_distance(session.target_text, session.final_text)
@@ -150,7 +158,8 @@ def analyze(session: SessionLog) -> AnalyticsReport:
 
     basic = BasicMetrics(
         duration_ms=duration_ms,
-        wpm=wpm,
+        wpm=net_wpm,
+        raw_wpm=raw_wpm,
         accuracy=accuracy,
         avg_interkey_latency_ms=avg_latency
     )
@@ -261,22 +270,49 @@ def analyze(session: SessionLog) -> AnalyticsReport:
 # Sample Texts
 # ============================================================================
 
-SAMPLE_TEXTS: List[str] = [
-    "The quick brown fox jumps over the lazy dog.",
-    "Pack my box with five dozen liquor jugs.",
-    "How vexingly quick daft zebras jump!",
-    "The five boxing wizards jump quickly.",
-    "Sphinx of black quartz, judge my vow.",
-    "Two driven jocks help fax my big quiz.",
-    "Bright vixens jump; dozy fowl quack.",
-    "Quick zephyrs blow, vexing daft Jim.",
-    "Waltz, bad nymph, for quick jigs vex.",
-    "The jay, pig, fox, zebra and my wolves quack!",
-    "Amazingly few discotheques provide jukeboxes.",
-    "How razorback-jumping frogs can level six piqued gymnasts!",
-    "Cozy lummox gives smart squid who asks for job pen.",
-    "Few quips galvanized the mock jury box.",
-    "The five boxing wizards jump quickly at dawn.",
+# Word pool for generating typing texts (200+ words)
+WORD_POOL: List[str] = [
+    # Common words
+    "the", "be", "to", "of", "and", "a", "in", "that", "have", "I",
+    "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
+    "this", "but", "his", "by", "from", "they", "we", "say", "her", "she",
+    "or", "an", "will", "my", "one", "all", "would", "there", "their", "what",
+    "so", "up", "out", "if", "about", "who", "get", "which", "go", "me",
+    "when", "make", "can", "like", "time", "no", "just", "him", "know", "take",
+    "people", "into", "year", "your", "good", "some", "could", "them", "see", "other",
+    "than", "then", "now", "look", "only", "come", "its", "over", "think", "also",
+    "back", "after", "use", "two", "how", "our", "work", "first", "well", "way",
+    "even", "new", "want", "because", "any", "these", "give", "day", "most", "us",
+    # Programming related
+    "function", "variable", "const", "return", "class", "object", "array", "string",
+    "number", "boolean", "null", "undefined", "import", "export", "default", "async",
+    "await", "promise", "callback", "error", "debug", "console", "print", "loop",
+    "while", "break", "continue", "switch", "case", "index", "value", "key", "map",
+    "filter", "reduce", "forEach", "find", "includes", "push", "pop", "shift", "slice",
+    "code", "program", "software", "developer", "engineer", "system", "data", "algorithm",
+    "interface", "component", "module", "package", "library", "framework", "server", "client",
+    "request", "response", "database", "query", "schema", "model", "view", "controller",
+    # Longer words for variety
+    "experience", "different", "important", "government", "development", "environment",
+    "information", "understand", "performance", "application", "organization", "international",
+    "relationship", "technology", "communication", "responsibility", "administration",
+    "professional", "opportunity", "community", "significant", "traditional", "individual",
+    # Action words
+    "create", "build", "write", "read", "update", "delete", "start", "stop", "run",
+    "test", "check", "verify", "validate", "submit", "send", "receive", "process",
+    "handle", "manage", "control", "monitor", "track", "analyze", "review", "approve",
+    # Descriptive words
+    "quick", "fast", "slow", "large", "small", "simple", "complex", "easy", "hard",
+    "right", "wrong", "true", "false", "valid", "invalid", "active", "inactive",
+    "public", "private", "static", "dynamic", "global", "local", "remote", "secure",
+    # More common words
+    "world", "life", "hand", "part", "child", "eye", "woman", "place", "week", "company",
+    "system", "program", "question", "number", "night", "point", "home",
+    "water", "room", "mother", "area", "money", "story", "fact", "month", "lot",
+    "study", "book", "word", "business", "issue", "side", "kind", "head", "house", "service",
+    "friend", "father", "power", "hour", "game", "line", "end", "member", "law", "car",
+    "city", "name", "president", "team", "minute", "idea", "kid", "body", "parent", "face",
+    "others", "level", "office", "door", "health", "person", "art", "war", "history", "party",
 ]
 
 QUOTES: List[str] = [
@@ -289,6 +325,14 @@ QUOTES: List[str] = [
     "The best error message is the one that never shows up. - Thomas Fuchs",
     "Simplicity is the soul of efficiency. - Austin Freeman",
 ]
+
+
+def generate_text(word_count: int) -> str:
+    """Generate a random text with the specified number of words."""
+    words = random.choices(WORD_POOL, k=word_count)
+    if words:
+        words[0] = words[0].capitalize()
+    return " ".join(words) + "."
 
 # ============================================================================
 # FastAPI App
@@ -310,14 +354,28 @@ async def index(request: Request):
 
 @app.get("/api/texts")
 async def get_texts():
-    return {"texts": SAMPLE_TEXTS, "quotes": QUOTES}
+    """Return sample texts of various lengths."""
+    return {
+        "texts": {
+            15: generate_text(15),
+            30: generate_text(30),
+            45: generate_text(45),
+            60: generate_text(60),
+        },
+        "quotes": QUOTES
+    }
 
 
 @app.get("/api/text")
-async def get_random_text(mode: str = "random"):
+async def get_random_text(
+    words: Optional[int] = Query(default=None, ge=10, le=200),
+    mode: str = "words"
+):
+    """Return a random text. Use words param for word count, or mode=quote for quotes."""
     if mode == "quote":
         return {"text": random.choice(QUOTES)}
-    return {"text": random.choice(SAMPLE_TEXTS)}
+    word_count = words if words else 30
+    return {"text": generate_text(word_count)}
 
 
 @app.post("/api/analyze")

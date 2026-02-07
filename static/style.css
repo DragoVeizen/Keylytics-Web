@@ -228,6 +228,46 @@ header {
     font-weight: 500;
 }
 
+/* Option Groups */
+.option-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.option-group.hidden {
+    display: none;
+}
+
+.word-count-btn,
+.time-btn {
+    background: var(--bg-secondary);
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.word-count-btn:hover,
+.time-btn:hover {
+    color: var(--text-secondary);
+    border-color: var(--text-muted);
+}
+
+.word-count-btn.active,
+.time-btn.active {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* Hidden utility */
+.hidden {
+    display: none !important;
+}
+
 /* ============================================================================
    Typing Area
    ============================================================================ */
@@ -467,6 +507,78 @@ main {
 
 .chart-container canvas {
     max-height: 200px;
+}
+
+/* Heatmap Container */
+.heatmap-container {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Keyboard Heatmap */
+.keyboard-heatmap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+    padding: 1rem;
+    background: var(--card-bg);
+    border-radius: 8px;
+}
+
+.keyboard-row {
+    display: flex;
+    gap: 6px;
+}
+
+.key {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--bg-primary);
+    transition: transform 0.1s ease;
+    cursor: default;
+}
+
+.key:hover {
+    transform: scale(1.1);
+}
+
+.key.space {
+    width: 180px;
+}
+
+.key.unused {
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+}
+
+.heatmap-legend {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.legend-gradient {
+    width: 120px;
+    height: 10px;
+    border-radius: 5px;
+    background: linear-gradient(to right, #22c55e, #eab308, #ef4444);
+}
+
+.legend-label {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 /* Insights */

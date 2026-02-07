@@ -13,20 +13,36 @@ class KeylyticsApp {
         // Live stats
         this.liveWpm = document.getElementById('live-wpm');
         this.liveAccuracy = document.getElementById('live-accuracy');
-        this.liveTime = document.getElementById('live-time');
+        this.timerDisplay = document.getElementById('timer-display');
+        this.liveProgress = document.getElementById('live-progress');
+        this.timerContainer = document.getElementById('timer-container');
+        this.progressContainer = document.getElementById('progress-container');
+
+        // Mode controls
+        this.modeButtons = document.querySelectorAll('.mode-btn');
+        this.wordCountButtons = document.querySelectorAll('.word-count-btn');
+        this.timeButtons = document.querySelectorAll('.time-btn');
 
         // State
         this.targetText = '';
         this.typedText = '';
         this.events = [];
         this.startTime = null;
-        this.timerInterval = null;
         this.isComplete = false;
-        this.mode = 'random';
+
+        // Mode state
+        this.mode = 'words'; // 'words', 'time', or 'quote'
+        this.wordCount = 30;
+        this.timeLimit = 30;
+        this.timerInterval = null;
+        this.remainingTime = 0;
+
+        // WPM tracking for graph
+        this.wpmSamples = [];
+        this.wpmSampleInterval = null;
 
         // Charts
         this.wpmChart = null;
-        this.latencyChart = null;
 
         // Initialize
         this.init();
@@ -50,7 +66,7 @@ class KeylyticsApp {
 
         // Global shortcuts
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Tab') {
+            if (e.key === 'Tab' && !this.isComplete) {
                 e.preventDefault();
                 this.loadNewText();
             }
@@ -69,11 +85,32 @@ class KeylyticsApp {
         });
 
         // Mode selector
-        document.querySelectorAll('.mode-btn').forEach(btn => {
+        this.modeButtons.forEach(btn => {
             btn.addEventListener('click', () => {
-                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+                this.modeButtons.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 this.mode = btn.dataset.mode;
+                this.updateModeVisibility();
+                this.loadNewText();
+            });
+        });
+
+        // Word count buttons
+        this.wordCountButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.wordCountButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.wordCount = parseInt(btn.dataset.words);
+                this.loadNewText();
+            });
+        });
+
+        // Time buttons
+        this.timeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.timeButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.timeLimit = parseInt(btn.dataset.time);
                 this.loadNewText();
             });
         });
@@ -82,6 +119,29 @@ class KeylyticsApp {
         this.typingArea.addEventListener('click', () => {
             this.typingInput.focus();
         });
+    }
+
+    updateModeVisibility() {
+        const wordOptions = document.getElementById('word-options');
+        const timeOptions = document.getElementById('time-options');
+
+        if (this.mode === 'words') {
+            wordOptions.classList.remove('hidden');
+            timeOptions.classList.add('hidden');
+            this.timerContainer.classList.add('hidden');
+            this.progressContainer.classList.remove('hidden');
+        } else if (this.mode === 'time') {
+            wordOptions.classList.add('hidden');
+            timeOptions.classList.remove('hidden');
+            this.timerContainer.classList.remove('hidden');
+            this.progressContainer.classList.remove('hidden');
+        } else {
+            // quote mode
+            wordOptions.classList.add('hidden');
+            timeOptions.classList.add('hidden');
+            this.timerContainer.classList.add('hidden');
+            this.progressContainer.classList.remove('hidden');
+        }
     }
 
     // Theme Management
@@ -98,7 +158,14 @@ class KeylyticsApp {
     // Text Management
     async loadNewText() {
         try {
-            const response = await fetch(`/api/text?mode=${this.mode}`);
+            let url;
+            if (this.mode === 'quote') {
+                url = '/api/text?mode=quote';
+            } else {
+                const wordCount = this.mode === 'time' ? 100 : this.wordCount;
+                url = `/api/text?words=${wordCount}`;
+            }
+            const response = await fetch(url);
             const data = await response.json();
             this.targetText = data.text;
         } catch (error) {
@@ -107,6 +174,7 @@ class KeylyticsApp {
         }
         this.reset();
         this.renderText();
+        this.updateModeVisibility();
     }
 
     reset() {
@@ -116,16 +184,24 @@ class KeylyticsApp {
         this.isComplete = false;
         this.typingInput.value = '';
         this.typingInput.disabled = false;
+        this.wpmSamples = [];
 
+        // Clear intervals
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
             this.timerInterval = null;
         }
+        if (this.wpmSampleInterval) {
+            clearInterval(this.wpmSampleInterval);
+            this.wpmSampleInterval = null;
+        }
 
+        this.remainingTime = this.timeLimit;
         this.liveWpm.textContent = '0';
         this.liveAccuracy.textContent = '100';
-        this.liveTime.textContent = '0';
+        this.timerDisplay.textContent = this.timeLimit;
         this.progressFill.style.width = '0%';
+        this.updateProgress();
     }
 
     restart() {
@@ -151,9 +227,19 @@ class KeylyticsApp {
             })
             .join('');
 
-        // Update progress
+        // Update progress bar
         const progress = (this.typedText.length / this.targetText.length) * 100;
         this.progressFill.style.width = `${Math.min(progress, 100)}%`;
+        this.updateProgress();
+    }
+
+    updateProgress() {
+        if (this.mode === 'time') {
+            const wordCount = this.typedText.split(' ').filter(w => w).length;
+            this.liveProgress.textContent = `${wordCount} words`;
+        } else {
+            this.liveProgress.textContent = `${this.typedText.length}/${this.targetText.length}`;
+        }
     }
 
     escapeHtml(str) {
@@ -169,7 +255,24 @@ class KeylyticsApp {
         // Start timer on first keydown
         if (!this.startTime) {
             this.startTime = performance.now();
-            this.startTimer();
+
+            // Start WPM sampling every 500ms
+            this.wpmSampleInterval = setInterval(() => {
+                this.sampleWpm();
+            }, 500);
+
+            // Start countdown for timed mode
+            if (this.mode === 'time') {
+                this.remainingTime = this.timeLimit;
+                this.timerInterval = setInterval(() => {
+                    this.remainingTime--;
+                    this.timerDisplay.textContent = this.remainingTime;
+
+                    if (this.remainingTime <= 0) {
+                        this.complete();
+                    }
+                }, 1000);
+            }
         }
 
         // Record event
@@ -177,6 +280,28 @@ class KeylyticsApp {
             key: e.key,
             kind: 'keydown',
             t: performance.now()
+        });
+    }
+
+    sampleWpm() {
+        if (!this.startTime || this.isComplete) return;
+
+        const elapsed = (performance.now() - this.startTime) / 1000; // seconds
+
+        // Count correct characters
+        let correctChars = 0;
+        for (let i = 0; i < this.typedText.length; i++) {
+            if (this.typedText[i] === this.targetText[i]) {
+                correctChars++;
+            }
+        }
+
+        const minutes = elapsed / 60;
+        const wpm = minutes > 0 ? Math.round((correctChars / 5) / minutes) : 0;
+
+        this.wpmSamples.push({
+            time: elapsed,
+            wpm: wpm
         });
     }
 
@@ -197,39 +322,34 @@ class KeylyticsApp {
         this.renderText();
         this.updateLiveStats();
 
-        // Check if complete
-        if (this.typedText.length >= this.targetText.length) {
+        // Check if complete (only for words and quote mode)
+        if (this.mode !== 'time' && this.typedText.length >= this.targetText.length) {
             this.complete();
         }
-    }
-
-    startTimer() {
-        this.timerInterval = setInterval(() => {
-            if (this.startTime && !this.isComplete) {
-                const elapsed = (performance.now() - this.startTime) / 1000;
-                this.liveTime.textContent = Math.floor(elapsed);
-            }
-        }, 100);
     }
 
     updateLiveStats() {
         if (!this.startTime) return;
 
         const elapsed = (performance.now() - this.startTime) / 60000; // minutes
-        const words = this.typedText.length / 5;
-        const wpm = elapsed > 0 ? Math.round(words / elapsed) : 0;
 
-        let correct = 0;
+        // Count correct characters for Net WPM
+        let correctChars = 0;
         for (let i = 0; i < this.typedText.length; i++) {
             if (this.typedText[i] === this.targetText[i]) {
-                correct++;
+                correctChars++;
             }
         }
+
+        // Net WPM: only correct characters count
+        const netWpm = elapsed > 0 ? Math.round((correctChars / 5) / elapsed) : 0;
+
+        // Accuracy
         const accuracy = this.typedText.length > 0
-            ? Math.round((correct / this.typedText.length) * 100)
+            ? Math.round((correctChars / this.typedText.length) * 100)
             : 100;
 
-        this.liveWpm.textContent = wpm;
+        this.liveWpm.textContent = netWpm;
         this.liveAccuracy.textContent = accuracy;
     }
 
@@ -238,12 +358,26 @@ class KeylyticsApp {
         this.isComplete = true;
         this.typingInput.disabled = true;
 
+        // Take final WPM sample
+        this.sampleWpm();
+
+        // Stop intervals
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+        if (this.wpmSampleInterval) {
+            clearInterval(this.wpmSampleInterval);
+            this.wpmSampleInterval = null;
         }
 
+        // For timed mode, trim the target text to what was actually attempted
+        const effectiveTarget = this.mode === 'time'
+            ? this.targetText.substring(0, this.typedText.length)
+            : this.targetText;
+
         const sessionData = {
-            target_text: this.targetText,
+            target_text: effectiveTarget,
             final_text: this.typedText,
             events: this.events
         };
@@ -269,13 +403,13 @@ class KeylyticsApp {
         this.typingArea.classList.add('hidden');
         this.resultsPanel.classList.remove('hidden');
 
-        // Main metrics
+        // Main metrics - show both Net WPM and Raw WPM
         document.getElementById('result-wpm').textContent = Math.round(report.basic.wpm);
+        document.getElementById('result-raw-wpm').textContent = Math.round(report.basic.raw_wpm);
         document.getElementById('result-accuracy').textContent =
             `${Math.round(report.basic.accuracy * 100)}%`;
         document.getElementById('result-duration').textContent =
             `${(report.basic.duration_ms / 1000).toFixed(1)}s`;
-        document.getElementById('result-chars').textContent = this.typedText.length;
         document.getElementById('result-corrections').textContent =
             report.corrections.backspace_count;
         document.getElementById('result-latency').textContent =
@@ -302,103 +436,142 @@ class KeylyticsApp {
             .join('');
 
         // Render charts
-        this.renderCharts(report);
+        this.renderWpmChart();
+        this.renderKeyboardHeatmap(report.per_key.latency_ms);
     }
 
-    renderCharts(report) {
+    renderWpmChart() {
+        const ctx = document.getElementById('wpm-chart').getContext('2d');
         const style = getComputedStyle(document.body);
         const accent = style.getPropertyValue('--accent').trim();
         const textMuted = style.getPropertyValue('--text-muted').trim();
-        const bgSecondary = style.getPropertyValue('--bg-secondary').trim();
 
-        // Destroy existing charts
-        if (this.wpmChart) this.wpmChart.destroy();
-        if (this.latencyChart) this.latencyChart.destroy();
+        // Destroy existing chart if any
+        if (this.wpmChart) {
+            this.wpmChart.destroy();
+        }
 
-        // WPM Over Time Chart
-        const wpmCtx = document.getElementById('wpm-chart').getContext('2d');
-        const wpmData = report.wpm_over_time || [];
+        // Prepare data from wpmSamples
+        const labels = this.wpmSamples.map(s => `${s.time.toFixed(1)}s`);
+        const data = this.wpmSamples.map(s => s.wpm);
 
-        this.wpmChart = new Chart(wpmCtx, {
+        this.wpmChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: wpmData.map(d => `${d.time}s`),
+                labels: labels,
                 datasets: [{
                     label: 'WPM',
-                    data: wpmData.map(d => d.wpm),
+                    data: data,
                     borderColor: accent,
                     backgroundColor: `${accent}20`,
+                    borderWidth: 2,
                     fill: true,
-                    tension: 0.4,
+                    tension: 0.3,
                     pointRadius: 0,
                     pointHoverRadius: 4,
+                    pointHoverBackgroundColor: accent
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { display: false }
-                },
-                scales: {
-                    x: {
-                        display: true,
-                        grid: { color: `${textMuted}20` },
-                        ticks: { color: textMuted, maxTicksLimit: 6 }
-                    },
-                    y: {
-                        display: true,
-                        grid: { color: `${textMuted}20` },
-                        ticks: { color: textMuted },
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-
-        // Key Latency Chart
-        const latencyCtx = document.getElementById('latency-chart').getContext('2d');
-        const latencyData = Object.entries(report.per_key.latency_ms)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 10);
-
-        this.latencyChart = new Chart(latencyCtx, {
-            type: 'bar',
-            data: {
-                labels: latencyData.map(([key, _]) => key === ' ' ? 'Space' : key),
-                datasets: [{
-                    label: 'Latency (ms)',
-                    data: latencyData.map(([_, val]) => Math.round(val)),
-                    backgroundColor: `${accent}80`,
-                    borderColor: accent,
-                    borderWidth: 1,
-                    borderRadius: 4,
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                indexAxis: 'y',
-                plugins: {
-                    legend: { display: false }
-                },
-                scales: {
-                    x: {
-                        display: true,
-                        grid: { color: `${textMuted}20` },
-                        ticks: { color: textMuted }
-                    },
-                    y: {
-                        display: true,
-                        grid: { display: false },
-                        ticks: {
-                            color: textMuted,
-                            font: { family: 'JetBrains Mono' }
+                    legend: { display: false },
+                    tooltip: {
+                        displayColors: false,
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.parsed.y} WPM`;
+                            }
                         }
                     }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        grid: { color: `${textMuted}20` },
+                        ticks: { color: textMuted, maxTicksLimit: 10 }
+                    },
+                    y: {
+                        display: true,
+                        beginAtZero: true,
+                        grid: { color: `${textMuted}20` },
+                        ticks: { color: textMuted }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
                 }
             }
         });
+    }
+
+    renderKeyboardHeatmap(latencyData) {
+        const keyboard = document.getElementById('keyboard-heatmap');
+
+        // Keyboard layout
+        const rows = [
+            ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+            ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
+            ['z', 'x', 'c', 'v', 'b', 'n', 'm']
+        ];
+
+        // Get min/max latencies for color scaling
+        const latencies = Object.values(latencyData).filter(v => v > 0);
+        const minLatency = latencies.length > 0 ? Math.min(...latencies) : 50;
+        const maxLatency = latencies.length > 0 ? Math.max(...latencies) : 200;
+
+        // Generate keyboard HTML
+        let html = '';
+
+        rows.forEach(row => {
+            html += '<div class="keyboard-row">';
+            row.forEach(key => {
+                const latency = latencyData[key] || 0;
+                const color = latency > 0
+                    ? this.getHeatmapColor(latency, minLatency, maxLatency)
+                    : null;
+                const className = latency > 0 ? 'key' : 'key unused';
+                const style = color ? `background-color: ${color}` : '';
+                const title = latency > 0 ? `${key}: ${Math.round(latency)}ms` : `${key}: no data`;
+                html += `<div class="${className}" style="${style}" title="${title}">${key.toUpperCase()}</div>`;
+            });
+            html += '</div>';
+        });
+
+        // Add space bar
+        const spaceLatency = latencyData[' '] || 0;
+        const spaceColor = spaceLatency > 0
+            ? this.getHeatmapColor(spaceLatency, minLatency, maxLatency)
+            : null;
+        const spaceClass = spaceLatency > 0 ? 'key space' : 'key space unused';
+        const spaceStyle = spaceColor ? `background-color: ${spaceColor}` : '';
+        const spaceTitle = spaceLatency > 0 ? `space: ${Math.round(spaceLatency)}ms` : 'space: no data';
+        html += `<div class="keyboard-row"><div class="${spaceClass}" style="${spaceStyle}" title="${spaceTitle}">SPACE</div></div>`;
+
+        keyboard.innerHTML = html;
+    }
+
+    getHeatmapColor(value, min, max) {
+        // Normalize value between 0 and 1
+        const normalized = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
+
+        // Green (fast) -> Yellow -> Red (slow)
+        let r, g, b;
+        if (normalized < 0.5) {
+            // Green to Yellow
+            r = Math.round(255 * (normalized * 2));
+            g = 200;
+            b = 50;
+        } else {
+            // Yellow to Red
+            r = 255;
+            g = Math.round(200 * (1 - (normalized - 0.5) * 2));
+            b = 50;
+        }
+
+        return `rgb(${r}, ${g}, ${b})`;
     }
 }
 
